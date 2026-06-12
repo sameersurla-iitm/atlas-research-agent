@@ -1,0 +1,134 @@
+/* ==========================================================================
+   Atlas Research Agent — custom UI theme
+   Layered on top of Streamlit's dark base for a premium, glassy look.
+   ========================================================================== */
+
+/* ---- base canvas ---- */
+.stApp {
+  background:
+    radial-gradient(1200px 600px at 12% -10%, rgba(109, 158, 255, 0.12), transparent 60%),
+    radial-gradient(1000px 520px at 112% 8%, rgba(176, 123, 255, 0.12), transparent 55%),
+    linear-gradient(180deg, #0a0d16 0%, #0b1020 100%);
+  color: #e6e9f2;
+}
+[data-testid="stHeader"] { background: transparent; }
+#MainMenu, footer { visibility: hidden; }
+
+.block-container { max-width: 1080px; padding-top: 2.2rem; padding-bottom: 4rem; }
+html, body, [class*="css"] {
+  font-family: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+}
+
+/* ---- hero ---- */
+.hero { text-align: center; margin: 0.2rem 0 1.6rem; }
+.hero-badge {
+  display: inline-block; letter-spacing: 2.5px; font-size: 11.5px; font-weight: 700;
+  color: #aab4d4; border: 1px solid rgba(255, 255, 255, 0.14);
+  padding: 6px 16px; border-radius: 999px; background: rgba(255, 255, 255, 0.03);
+}
+.hero-title {
+  font-size: 66px; font-weight: 800; margin: 16px 0 8px; line-height: 1;
+  background: linear-gradient(135deg, #9db8ff 0%, #b9a3ff 50%, #e6b8ff 100%);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.hero-sub { color: #9aa4bf; font-size: 17px; max-width: 640px; margin: 0 auto; line-height: 1.5; }
+.pipeline-pills {
+  margin-top: 20px; display: flex; gap: 8px; justify-content: center;
+  align-items: center; flex-wrap: wrap;
+}
+.pill {
+  background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.12);
+  padding: 8px 16px; border-radius: 999px; font-weight: 600; font-size: 13.5px; color: #dfe4f2;
+}
+.arrow { color: #6b7693; font-weight: 700; }
+
+/* ---- text input ---- */
+.stTextInput input {
+  background: rgba(255, 255, 255, 0.04) !important;
+  border: 1px solid rgba(255, 255, 255, 0.14) !important;
+  border-radius: 14px !important; color: #eef1f8 !important;
+  font-size: 17px !important; padding: 16px 18px !important;
+}
+.stTextInput input:focus {
+  border-color: #7c8cff !important;
+  box-shadow: 0 0 0 3px rgba(124, 140, 255, 0.25) !important;
+}
+.stTextInput input::placeholder { color: #6a7491 !important; }
+
+/* ---- buttons ---- */
+.stButton button {
+  border-radius: 12px !important; font-weight: 600 !important;
+  border: 1px solid rgba(255, 255, 255, 0.14) !important;
+  background: rgba(255, 255, 255, 0.04) !important; color: #dfe4f2 !important;
+  transition: 0.15s ease !important;
+}
+.stButton button:hover { border-color: #7c8cff !important; color: #fff !important; }
+.stButton button[kind="primary"] {
+  background: linear-gradient(135deg, #6d9eff, #b07bff) !important;
+  border: none !important; color: #fff !important; padding: 12px 22px !important;
+  box-shadow: 0 8px 24px rgba(124, 140, 255, 0.35) !important;
+}
+.stButton button[kind="primary"]:hover { filter: brightness(1.08); transform: translateY(-1px); }
+
+/* ---- status + bordered containers ---- */
+[data-testid="stStatus"],
+[data-testid="stVerticalBlockBorderWrapper"] {
+  background: rgba(255, 255, 255, 0.03) !important;
+  border: 1px solid rgba(255, 255, 255, 0.10) !important;
+  border-radius: 16px !important;
+}
+
+/* ---- section labels ---- */
+.section-label {
+  font-size: 13px; font-weight: 700; letter-spacing: 1.5px; color: #8b95b4;
+  text-transform: uppercase; margin: 26px 0 10px;
+}
+
+/* ---- sources ---- */
+.source-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px;
+}
+.source-card {
+  display: flex; align-items: center; gap: 12px; text-decoration: none;
+  background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 14px; padding: 14px; transition: 0.15s ease;
+}
+.source-card:hover {
+  border-color: #7c8cff; transform: translateY(-2px); background: rgba(124, 140, 255, 0.08);
+}
+.source-index {
+  width: 30px; height: 30px; border-radius: 9px; display: flex;
+  align-items: center; justify-content: center; flex: 0 0 auto;
+  background: linear-gradient(135deg, #6d9eff, #b07bff); color: #fff; font-weight: 700; font-size: 13px;
+}
+.source-body { flex: 1; min-width: 0; }
+.source-title {
+  color: #eaeefb; font-weight: 600; font-size: 14px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.source-domain { color: #8b95b4; font-size: 12px; }
+.source-cred { color: #9fe6c4; font-weight: 700; font-size: 13px; flex: 0 0 auto; }
+
+/* ---- metrics ---- */
+[data-testid="stMetric"] {
+  background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 14px; padding: 14px 16px;
+}
+[data-testid="stMetricLabel"] p { color: #8b95b4 !important; font-size: 12.5px !important; }
+[data-testid="stMetricValue"] { color: #eef1f8 !important; }
+
+/* ---- sidebar ---- */
+[data-testid="stSidebar"] {
+  background: #0b0f1c; border-right: 1px solid rgba(255, 255, 255, 0.07);
+}
+[data-testid="stSidebar"] .stButton button { font-size: 13px !important; text-align: left !important; }
+.keyrow {
+  display: flex; align-items: center; gap: 8px; padding: 5px 0; font-size: 14px; color: #cdd4e8;
+}
+.keynote { color: #7c87a5; font-size: 12px; margin-left: auto; }
+.dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; flex: 0 0 auto; }
+.dot.ok { background: #46d39a; box-shadow: 0 0 8px rgba(70, 211, 154, 0.6); }
+.dot.off { background: #5b6478; }
+
+/* ---- empty state ---- */
+.empty { text-align: center; color: #7e88a6; padding: 36px 0 10px; font-size: 15px; }
