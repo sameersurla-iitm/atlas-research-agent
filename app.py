@@ -267,12 +267,31 @@ def run_and_render(query: str, provider: str) -> None:
         render_metrics(stats)
     except Exception as exc:  # noqa: BLE001 - surface a friendly error in the UI
         msg = str(exc)
+        low = msg.lower()
         blocked = (
-            "zscaler" in msg.lower()
+            "zscaler" in low
             or "permissiondenied" in type(exc).__name__.lower()
             or "403" in msg
         )
-        if blocked:
+        invalid_key = (
+            "api key" in low
+            or "api_key" in low
+            or "invalid_argument" in low
+            or "unauthenticated" in low
+            or "401" in msg
+            or ("400" in msg and "key" in low)
+        )
+        if invalid_key:
+            st.error("Invalid or missing API key for the selected provider.")
+            st.info(
+                "**If this is the deployed app** (Streamlit Cloud): open your app → "
+                "**⋮ → Settings → Secrets** and make sure the key matches your current "
+                "key, with **no surrounding quotes or spaces**. If you regenerated the "
+                "key recently, update it here too.\n\n"
+                "```toml\nGEMINI_API_KEY = \"your_current_key\"\nLLM_PROVIDER = \"gemini\"\n```\n\n"
+                "**If this is local**: check the same key in your `.env` file."
+            )
+        elif blocked:
             st.error(
                 "This provider's API endpoint appears to be **blocked by your "
                 "corporate network** (e.g. Zscaler). Switch the **LLM provider** "
@@ -280,7 +299,7 @@ def run_and_render(query: str, provider: str) -> None:
             )
         else:
             st.error(f"Research run failed: {exc}")
-            st.info("Check that your selected provider's API key is valid in `.env`.")
+            st.info("Check that your selected provider's API key is valid in `.env` (or Streamlit secrets).")
 
 
 def render_saved_result() -> None:
