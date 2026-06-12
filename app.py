@@ -39,7 +39,10 @@ load_css()
 
 # Session state
 st.session_state.setdefault("query_input", "")
-st.session_state.setdefault("result", None)
+st.session_state.setdefault("history", [])       # completed runs for THIS session
+st.session_state.setdefault("active_id", None)    # id of the run currently displayed
+st.session_state.setdefault("pending", None)      # {"query","provider"} to run next pass
+st.session_state.setdefault("run_counter", 0)     # monotonic id source
 st.session_state.setdefault("authed", False)
 
 
@@ -157,7 +160,38 @@ def render_metrics(stats: UsageStats) -> None:
 # ----------------------------------------------------------------------------
 # Live run
 # ----------------------------------------------------------------------------
-def run_and_render(query: str, provider: str) -> None:
+def _save_run(query: str, provider: str, markdown: str, sources, stats) -> int:
+    """Persist a completed run to session history and make it the active one."""
+    st.session_state.run_counter += 1
+    rid = st.session_state.run_counter
+    st.session_state.history.append(
+        {
+            "id": rid,
+            "query": query,
+            "provider": provider,
+            "markdown": markdown,
+            "sources": [s.model_dump() for s in sources],
+            "stats": stats.model_dump(),
+        }
+    )
+    st.session_state.active_id = rid
+    return rid
+
+
+def _get_run(rid: int | None) -> dict | None:
+    for r in st.session_state.history:
+        if r["id"] == rid:
+            return r
+    return None
+
+
+def run_and_render(query: str, provider: str) -> bool:
+    """Execute the pipeline, rendering each stage live. Returns True on success.
+
+    On success the run is persisted to session history (so it survives any later
+    rerun — e.g. switching provider or opening another thread — instead of
+    vanishing and wasting the tokens already spent).
+    """
     st.markdown('<div class="section-label">🧠 Agent pipeline</div>', unsafe_allow_html=True)
     planner_status = st.status("🧭 **Planner** — decomposing your query…", expanded=True)
     researcher_status = st.status("🔎 **Researcher** — waiting…", expanded=False)
@@ -256,15 +290,10 @@ def run_and_render(query: str, provider: str) -> None:
         report = pipeline.report_from_markdown(query, markdown, kb)
         stats = pipeline.stats()
 
-        st.session_state.result = {
-            "query": query,
-            "markdown": markdown,
-            "sources": [s.model_dump() for s in report.sources],
-            "stats": stats.model_dump(),
-        }
-
         render_sources(report.sources)
         render_metrics(stats)
+        _save_run(query, provider, markdown, report.sources, stats)
+        return True
     except Exception as exc:  # noqa: BLE001 - surface a friendly error in the UI
         msg = str(exc)
         low = msg.lower()
@@ -300,15 +329,19 @@ def run_and_render(query: str, provider: str) -> None:
         else:
             st.error(f"Research run failed: {exc}")
             st.info("Check that your selected provider's API key is valid in `.env` (or Streamlit secrets).")
+        return False
 
 
-def render_saved_result() -> None:
-    res = st.session_state.result
+def render_stored_run(res: dict) -> None:
+    """Render a previously-completed run from session history."""
+    prov = res.get("provider", "")
+    prov_label = config.PROVIDERS.get(prov, {}).get("label", prov)
     st.markdown(
-        f'<div class="section-label">📄 Last report · '
-        f"{escape(res['query'])}</div>",
+        f'<div class="section-label">📄 Report · {escape(res["query"])}</div>',
         unsafe_allow_html=True,
     )
+    if prov_label:
+        st.caption(f"Generated with {escape(prov_label)}")
     with st.container(border=True):
         st.markdown(res["markdown"])
     render_sources([Source(**d) for d in res["sources"]])
@@ -318,6 +351,11 @@ def render_saved_result() -> None:
 # ----------------------------------------------------------------------------
 # Sidebar
 # ----------------------------------------------------------------------------
+# A run is in flight whenever a query is pending. While it is, we lock the
+# controls so a stray click (e.g. switching provider) can't interrupt the
+# generation and throw away tokens already spent.
+running = st.session_state.pending is not None
+
 with st.sidebar:
     st.markdown("### ⚙️ Configuration")
 
@@ -332,6 +370,8 @@ with st.sidebar:
         options=provider_keys,
         index=default_idx,
         format_func=lambda k: config.PROVIDERS[k]["label"],
+        disabled=running,
+        help="Locked while a research run is in progress.",
     )
 
     st.markdown("#### 🔑 Credentials")
@@ -352,13 +392,48 @@ with st.sidebar:
         )
 
     st.divider()
+    st.markdown("#### 🧵 This session")
+    if st.button(
+        "＋ New research",
+        use_container_width=True,
+        disabled=running,
+        help="Start a fresh question. Your previous results stay saved below.",
+    ):
+        st.session_state.active_id = None
+        st.session_state.query_input = ""
+        st.rerun()
+
+    if st.session_state.history:
+        for item in reversed(st.session_state.history):
+            is_active = item["id"] == st.session_state.active_id
+            short = item["query"][:38] + ("…" if len(item["query"]) > 38 else "")
+            label = ("● " if is_active else "○ ") + short
+            if st.button(
+                label,
+                key=f"hist_{item['id']}",
+                use_container_width=True,
+                disabled=running,
+            ):
+                st.session_state.active_id = item["id"]
+                st.rerun()
+    else:
+        st.caption("Questions you research will be saved here for this session.")
+
+    st.divider()
     st.markdown("#### 💡 Example queries")
 
     def _set_query(q: str) -> None:
         st.session_state.query_input = q
 
     for i, ex in enumerate(EXAMPLE_QUERIES):
-        st.button(ex, key=f"ex_{i}", on_click=_set_query, args=(ex,), use_container_width=True)
+        st.button(
+            ex,
+            key=f"ex_{i}",
+            on_click=_set_query,
+            args=(ex,),
+            use_container_width=True,
+            disabled=running,
+        )
 
     st.divider()
     st.caption(
@@ -379,19 +454,31 @@ with col_q:
         key="query_input",
         placeholder="Ask anything — e.g. 'How does speculative decoding speed up LLMs?'",
         label_visibility="collapsed",
+        disabled=running,
     )
 with col_btn:
     run = st.button(
         "🚀 Research",
         type="primary",
         use_container_width=True,
-        disabled=not has_llm,
+        disabled=(not has_llm) or running,
     )
 
+# Submit: capture the query + provider, then rerun so the controls lock before
+# the (blocking) run begins.
 if run and query.strip():
-    run_and_render(query.strip(), provider)
-elif st.session_state.result:
-    render_saved_result()
+    st.session_state.pending = {"query": query.strip(), "provider": provider}
+    st.rerun()
+
+if st.session_state.pending:
+    p = st.session_state.pending
+    ok = run_and_render(p["query"], p["provider"])
+    st.session_state.pending = None
+    if ok:
+        # Re-render from saved history (re-enables the controls cleanly).
+        st.rerun()
+elif st.session_state.active_id is not None and _get_run(st.session_state.active_id):
+    render_stored_run(_get_run(st.session_state.active_id))
 else:
     st.markdown(
         '<div class="empty">Enter a question above and Atlas will research it '
