@@ -25,13 +25,17 @@ If the research is NOT sufficient, propose up to 3 specific follow-up search \
 queries that would close the most important gaps. If it IS sufficient, return an \
 empty follow-up list.
 
+IMPORTANT: Keep EVERY string value SHORT (under 15 words). No examples, no \
+brackets, no parentheses inside the strings. The entire JSON must fit in \
+300 tokens.
+
 Respond ONLY with valid JSON in exactly this schema:
 {
   "is_sufficient": true,
-  "gaps": ["..."],
-  "conflicts": ["..."],
-  "follow_up_queries": ["..."],
-  "reasoning": "one or two sentences"
+  "gaps": ["short gap description"],
+  "conflicts": ["short conflict description"],
+  "follow_up_queries": ["short search query"],
+  "reasoning": "one concise sentence"
 }"""
 
 
@@ -53,9 +57,21 @@ class CriticAgent:
             f"QUERY: {query}\n\nSUB-QUESTIONS:\n{sub_q_text}\n\n"
             f"FACTS ({len(kb.facts)}):\n{facts_text}"
         )
-        data = self.llm.complete_json(
-            system=SYSTEM_PROMPT, user=user, tier=self.tier, temperature=0.2
-        )
+        # The Critic is an optional refinement step. If its response can't be
+        # parsed (e.g. a provider truncates the JSON), we must NOT crash the whole
+        # run — we default to "sufficient" so the pipeline proceeds to synthesis
+        # and the user still gets a complete, cited report.
+        try:
+            data = self.llm.complete_json(
+                system=SYSTEM_PROMPT, user=user, tier=self.tier,
+                temperature=0.2, max_tokens=512,
+            )
+        except Exception:  # noqa: BLE001 - graceful degradation, never fatal
+            return Critique(
+                is_sufficient=True,
+                reasoning="Critic step skipped (response unavailable); research accepted as-is.",
+            )
+
         if not isinstance(data, dict):
             return Critique(is_sufficient=True, reasoning="Critique unavailable.")
 

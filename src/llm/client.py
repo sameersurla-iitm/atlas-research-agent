@@ -56,10 +56,51 @@ def _parse_retry_delay(exc: BaseException) -> float | None:
     return None
 
 
+def _repair_truncated_json(text: str) -> dict | list:
+    """Attempt to close a truncated JSON object/array so it can be parsed.
+
+    Gemini sometimes stops mid-value if the output exceeds its token budget.
+    We trim to the last cleanly-closed value, close any open structures, and
+    retry parsing. Raises ValueError if still unparseable.
+    """
+    text = text.strip()
+    # Find where the JSON structure starts
+    for open_ch in ("{"  , "["):
+        start = text.find(open_ch)
+        if start == -1:
+            continue
+        fragment = text[start:]
+        # Strip a trailing partial token (unclosed string or incomplete key)
+        # by trimming everything after the last comma or opening bracket
+        # that precedes the broken part.
+        trimmed = re.sub(r',\s*"[^"]*$', "", fragment)   # trailing partial key
+        trimmed = re.sub(r',\s*$', "", trimmed)            # trailing comma
+        # Count open/close braces and brackets to close them
+        closers = ""
+        depth_brace = trimmed.count("{") - trimmed.count("}")
+        depth_bracket = trimmed.count("[") - trimmed.count("]")
+        # Close any open string first (odd number of unescaped quotes after last comma)
+        in_string = False
+        for ch in trimmed:
+            if ch == '"':
+                in_string = not in_string
+        if in_string:
+            closers += '"'
+        closers += "]" * max(depth_bracket, 0)
+        closers += "}" * max(depth_brace, 0)
+        candidate = trimmed + closers
+        try:
+            return json.loads(candidate)
+        except json.JSONDecodeError:
+            pass
+    raise ValueError(f"Could not repair truncated JSON: {text[:100]!r}")
+
+
 def extract_json(text: str) -> dict | list:
     """Best-effort parse of a JSON object/array from a raw LLM response.
 
-    Tries, in order: direct parse, fenced ```json block, first-brace-to-last.
+    Tries, in order: direct parse, fenced ```json block, first-brace-to-last,
+    then a truncation-repair heuristic.
     Raises ValueError if nothing parses.
     """
     text = (text or "").strip()
@@ -82,7 +123,11 @@ def extract_json(text: str) -> dict | list:
                 return json.loads(text[start : end + 1])
             except json.JSONDecodeError:
                 continue
-
+    # Last resort: try to repair a response truncated by the model's token limit.
+    try:
+        return _repair_truncated_json(text)
+    except ValueError:
+        pass
     raise ValueError(f"Could not extract JSON from response: {text[:200]!r}")
 
 
@@ -181,6 +226,7 @@ class LLMClient:
         tier: str = "default",
         json_mode: bool = False,
         temperature: float = 0.3,
+        max_tokens: int | None = None,
     ) -> str:
         """Call the LLM with pacing, 429-aware retries, and model failover.
 
@@ -207,6 +253,8 @@ class LLMClient:
                 }
                 if json_mode:
                     kwargs["response_format"] = {"type": "json_object"}
+                if max_tokens is not None:
+                    kwargs["max_tokens"] = max_tokens
                 try:
                     resp = self._create(**kwargs)
                     self.calls += 1
@@ -239,9 +287,13 @@ class LLMClient:
         raise last_exc or RuntimeError("All candidate models failed.")
 
     def complete_json(
-        self, system: str, user: str, tier: str = "default", temperature: float = 0.2
+        self, system: str, user: str, tier: str = "default", temperature: float = 0.2,
+        max_tokens: int | None = None,
     ) -> dict | list:
-        raw = self.complete(system, user, tier=tier, json_mode=True, temperature=temperature)
+        raw = self.complete(
+            system, user, tier=tier, json_mode=True,
+            temperature=temperature, max_tokens=max_tokens,
+        )
         return extract_json(raw)
 
     def stream(
